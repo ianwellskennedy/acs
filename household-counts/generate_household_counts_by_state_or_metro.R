@@ -34,17 +34,17 @@ state_or_metro <- 'state' # Define the geography for the ACS data download. Othe
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
 
-acs_year <- 2023
+acs_year <- 2024
 acs_data_type <- 'acs1' # Define the survey to pull data from, 'acs5' for 5-year estimates, 'acs1' for 1 year estimates
 geo_level_for_data_pull <- state_or_metro 
 read_in_geometry <- FALSE # Change this to TRUE to pull in spatial data along with the data download 
                           # Geometry will take A LOT longer to read in.The more granular the geography, the longer the read-in time if TRUE.
 show_api_call = TRUE # Show the call made to the Census API in the console, this will help if an error is thrown
 
-state_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2023/States/cb_2023_us_state_20m.shp" # Input the file path for the shape file that you would like to read in. 
-metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2023/CBSAs/cb_2023_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
+state_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/States/cb_2024_us_state_20m.shp" # Input the file path for the shape file that you would like to read in. 
+metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_2024_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
 
-output_filepath_for_cleaned_data <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_2023.xlsx")
+output_filepath_for_cleaned_data <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_2024.xlsx")
 output_filepath_for_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, ".shp")
 
 # Create a variable list to read in ----
@@ -56,8 +56,8 @@ acs_variables <- load_variables(year = acs_year, dataset = acs_data_type)
 # write.xlsx(acs_variables, paste0("R:/ADHOC-JBREC/Ian-K/API Template Scripts/ACS/Summary Tables/acs_variables_", acs_year, "_", acs_data_type, ".xlsx"))
 
 # Read in the preferred variable spreadsheet (create your own within this file: R:/ADHOC-JBREC/Ian-K/API Template Scripts/ACS/Summary Tables/acs_variables_2023_acs1.xlsx)
-variables <- read.xlsx("household-counts/inputs/acs_variables_2023_acs1.xlsx", 
-                       sheet = 'Household Variables')
+variables <- read.xlsx("acs-variables/acs_variables_2024_acs1.xlsx", 
+                       sheet = 'Household Counts')
 
 # Select 'name' and 'amended_label' (and rename 'name' to code')
 variables <- variables %>%
@@ -169,12 +169,13 @@ if(state_or_metro == 'state') {
 
 # Plot the data:
 spatial_data %>%
+  filter(!NAME %in% c('Alaska', 'Hawaii')) %>%
   filter(
     !str_detect(NAME, pattern = ', AK') & !str_detect(NAME, pattern = ', HI')
     ) %>%
   ggplot(aes(fill = owner_units_2 / owner_units_total)) +
   geom_sf(color = NA) +
-  scale_fill_viridis_c(option = 'C') +
+  scale_fill_viridis_c(option = 'D') +
   theme_minimal() +
   theme(panel.grid.major = element_blank(),
         panel.grid.minor = element_blank())
