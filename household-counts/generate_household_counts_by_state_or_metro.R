@@ -29,7 +29,7 @@ rm(install_if_missing, packages)
 
 # Setting file paths / environment variables ----
 
-state_or_metro <- 'state' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
+state_or_metro <- 'cbsa' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
                         # See https://walker-data.com/tidycensus/articles/basic-usage.html#geography-in-tidycensus for a comprehensive list of geography options.
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
@@ -182,6 +182,8 @@ spatial_data %>%
 
 
 # Output spatial data (ignore if not outputting a shapefile) ----
+names(spatial_data) <- str_replace(names(spatial_data), pattern = "owner_units", replacement = 'o')
+names(spatial_data) <- str_replace(names(spatial_data), pattern = "renter_units", replacement = 'r')
 
 # Check to make sure there is an Active ArcGIS Installation
 arc.check_product()
