@@ -81,7 +81,6 @@ data <- get_acs(
           show_call = show_api_call
           )
 
-
 data <- data %>%
   # Rename 'variable' to 'Code'
   rename(code = variable) %>%
@@ -132,7 +131,7 @@ if(state_or_metro == 'state') {
 
 write.xlsx(data_summarized, output_filepath_for_cleaned_data)
 
-# Read in spatial files (ignore if not outputting a shapefile) ----
+# Read in spatial files ----
 
 # Note, these files will contain geographies from US Territories (i.e. Puerto Rico, Guam, etc.). Remove them if need be!
 
@@ -145,7 +144,7 @@ state_shapefile <- state_shapefile %>%
 metro_shapefile <- metro_shapefile %>%
   select(GEOID, geometry)
 
-# Create a spatial file and plot it! (ignore if not outputting a shapefile) ----
+# Create a spatial file and plot it! ----
 
 if(state_or_metro == 'state') {
   
@@ -181,7 +180,8 @@ spatial_data %>%
         panel.grid.minor = element_blank())
 
 
-# Output spatial data (ignore if not outputting a shapefile) ----
+# Output spatial data ----
+
 names(spatial_data) <- str_replace(names(spatial_data), pattern = "owner_units", replacement = 'o')
 names(spatial_data) <- str_replace(names(spatial_data), pattern = "renter_units", replacement = 'r')
 
