@@ -29,7 +29,7 @@ rm(install_if_missing, packages)
 
 # Setting file paths / environment variables ----
 
-state_or_metro <- 'cbsa' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
+state_or_metro <- 'state' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
                         # See https://walker-data.com/tidycensus/articles/basic-usage.html#geography-in-tidycensus for a comprehensive list of geography options.
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
@@ -104,7 +104,7 @@ if(state_or_metro == 'state') {
     # Group by CBSA (NAME, GEOID in this case as they are both unique identifiers)
     group_by(NAME, GEOID) %>%
     # To find the total number of housing units, SF-detached units, and SF-attached units
-    summarize(across(units_total:renter_units_boat_van_rv, ~sum(., na.rm = T))) %>%
+    summarize(across(pop:renter_units_boat_van_rv, ~sum(., na.rm = T))) %>%
     # Ungroup!
     ungroup()
   
@@ -117,7 +117,7 @@ if(state_or_metro == 'state') {
     # Group by CBSA (NAME, GEOID in this case as they are both unique identifiers)
     group_by(NAME, GEOID) %>%
     # To find the total number of housing units, SF-detached units, and SF-attached units
-    summarize(across(units_total:renter_units_boat_van_rv, ~sum(., na.rm = T))) %>%
+    summarize(across(pop:renter_units_boat_van_rv, ~sum(., na.rm = T))) %>%
     # Ungroup!
     ungroup()
   
