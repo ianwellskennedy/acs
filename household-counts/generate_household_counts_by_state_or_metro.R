@@ -1,7 +1,7 @@
 # Packages ----
 
 # Set the packages to read in
-packages <- c("tidyverse", "tidycensus", "ggmap", "sf", "openxlsx", "arcgisbinding", "conflicted")
+packages <- c("tidyverse", "tidycensus", "ggmap", "sf", "openxlsx", "arcgisbinding", "conflicted", "rmapshaper")
 
 # Function to check and install missing packages
 install_if_missing <- function(package) {
@@ -29,7 +29,7 @@ rm(install_if_missing, packages)
 
 # Setting file paths / environment variables ----
 
-state_or_metro <- 'state' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
+state_or_metro <- 'cbsa' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
                         # See https://walker-data.com/tidycensus/articles/basic-usage.html#geography-in-tidycensus for a comprehensive list of geography options.
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
@@ -45,7 +45,8 @@ state_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/States/cb
 metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_2024_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
 
 output_filepath_for_cleaned_data <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_2024.xlsx")
-output_filepath_for_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, ".shp")
+output_filepath_for_wide_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, ".shp")
+output_filepath_for_long_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_long.shp")
 
 # Create a variable list to read in ----
 
@@ -182,11 +183,54 @@ spatial_data %>%
 
 # Output spatial data ----
 
+spatial_data_long <- spatial_data %>%
+  select(-pop) %>%
+  pivot_longer(names_to = 'category', values_to = 'hh_count', cols = units_total:renter_units_boat_van_rv) %>%
+  st_simplify(dTolerance = 50, preserveTopology = T)
+
+
+spatial_data_long <- spatial_data_long %>%
+  mutate(category = case_when(
+    category == 'units_total' ~ 'Total Housing Units',
+    category == 'owner_units_total' ~ 'Total Owner-Occupied Housing Units',
+    category == 'owner_units_sf_det' ~ 'Owner-Occupied Housing Units: Single-Family Detached',
+    category == 'owner_units_sf_att' ~ 'Owner-Occupied Housing Units: Single-Family Attached',
+    category == 'owner_units_2' ~ 'Owner-Occupied Housing Units in 2 Unit Properties',
+    category == 'owner_units_3_4' ~ 'Owner-Occupied Housing Units in 3-to-4 Unit Properties',
+    category == 'owner_units_5_9' ~ 'Owner-Occupied Housing Units in 5-to-9 Unit Properties',
+    category == 'owner_units_10_19' ~ 'Owner-Occupied Housing Units in 10-to-19 Unit Properties',
+    category == 'owner_units_20_49' ~ 'Owner-Occupied Housing Units in 20-to-49 Unit Properties',
+    category == 'owner_units_50_plus' ~ 'Owner-Occupied Housing Units in 50+ Unit Properties',
+    category == 'owner_units_mobile' ~ 'Owner-Occupied Housing Units: Mobile Homes',
+    category == 'owner_units_boat_van_rv' ~ 'Owner-Occupied Housing Units: Boats, RVS, Vans, etc.',
+    category == 'renter_units' ~ 'Total Renter-Occupied Housing Units',
+    category == 'renter_units_sf_det' ~ 'Renter-Occupied Housing Units: Single-Family Detached',
+    category == 'renter_units_sf_att' ~ 'Renter-Occupied Housing Units: Single-Family Attached',
+    category == 'renter_units_2' ~ 'Renter-Occupied Housing Units in 2 Unit Properties',
+    category == 'renter_units_3_4' ~ 'Renter-Occupied Housing Units in 3-to-4 Unit Properties',
+    category == 'renter_units_5_9' ~ 'Renter-Occupied Housing Units in 5-to-9 Unit Properties',
+    category == 'renter_units_10_19' ~ 'Renter-Occupied Housing Units in 10-to-19 Unit Properties',
+    category == 'renter_units_20_49' ~ 'Renter-Occupied Housing Units in 20-to-49 Unit Properties',
+    category == 'renter_units_50_plus' ~ 'Renter-Occupied Housing Units in 50+ Unit Properties',
+    category == 'renter_units_mobile' ~ 'Renter-Occupied Housing Units: Mobile Homes',
+    category == 'renter_units_boat_van_rv' ~ 'Renter-Occupied Housing Units: Boats, RVS, Vans, etc.',
+    T ~ category
+  ))
+
+spatial_data_long <- spatial_data_long %>%
+  group_by(NAME, GEOID) %>%
+  mutate(shr_tot = (hh_count / hh_count[category == 'Total Housing Units']) * 100,
+         shr_own = (hh_count / hh_count[category == 'Total Owner-Occupied Housing Units']) * 100,
+         shr_rnt = (hh_count / hh_count[category == 'Total Renter-Occupied Housing Units']) * 100) %>%
+  ungroup()
+
 names(spatial_data) <- str_replace(names(spatial_data), pattern = "owner_units", replacement = 'o')
 names(spatial_data) <- str_replace(names(spatial_data), pattern = "renter_units", replacement = 'r')
+
 
 # Check to make sure there is an Active ArcGIS Installation
 arc.check_product()
 
 # Output the ACS zip code data to the path specified
-arc.write(path = output_filepath_for_shapefile, data = spatial_data, overwrite = TRUE, validate = TRUE)
+arc.write(path = output_filepath_for_wide_shapefile, data = spatial_data, overwrite = TRUE, validate = TRUE)
+arc.write(path = output_filepath_for_long_shapefile, data = spatial_data_long, overwrite = TRUE, validate = TRUE)
