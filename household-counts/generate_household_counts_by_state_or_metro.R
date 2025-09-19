@@ -46,7 +46,9 @@ metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_
 
 output_filepath_for_cleaned_data <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_2024.xlsx")
 output_filepath_for_wide_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, ".shp")
-output_filepath_for_long_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_long.shp")
+output_filepath_for_aggregate_long_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_long.shp")
+output_filepath_for_owner_long_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_long_owner.shp")
+output_filepath_for_renter_long_shapefile <- paste0("household-counts/outputs/household_counts_by_", state_or_metro, "_long_renter.shp")
 
 # Create a variable list to read in ----
 
@@ -181,13 +183,12 @@ spatial_data %>%
         panel.grid.minor = element_blank())
 
 
-# Output spatial data ----
+# Clean spatial data ----
 
 spatial_data_long <- spatial_data %>%
   select(-pop) %>%
   pivot_longer(names_to = 'category', values_to = 'hh_count', cols = units_total:renter_units_boat_van_rv) %>%
   st_simplify(dTolerance = 50, preserveTopology = T)
-
 
 spatial_data_long <- spatial_data_long %>%
   mutate(category = case_when(
@@ -224,13 +225,29 @@ spatial_data_long <- spatial_data_long %>%
          shr_rnt = (hh_count / hh_count[category == 'Total Renter-Occupied Housing Units']) * 100) %>%
   ungroup()
 
-names(spatial_data) <- str_replace(names(spatial_data), pattern = "owner_units", replacement = 'o')
-names(spatial_data) <- str_replace(names(spatial_data), pattern = "renter_units", replacement = 'r')
+spatial_data_long_owner <- spatial_data_long %>%
+  filter(!str_detect(category, pattern = 'Renter-Occupied') & !str_detect(category, pattern = 'Total Housing Units')) %>%
+  select(-c(shr_tot, shr_rnt)) %>%
+  mutate(category = str_remove(category, ""))
 
+spatial_data_long_renter <- spatial_data_long %>%
+  filter(!str_detect(category, pattern = 'Owner-Occupied') & !str_detect(category, pattern = 'Total Housing Units')) %>%
+  select(-c(shr_tot, shr_own))
+
+clean_names <- function(data){
+  names(data) <- str_replace(names(data), pattern = "owner_units", replacement = 'o')
+  names(data) <- str_replace(names(data), pattern = "renter_units", replacement = 'r')
+}
+
+spatial_data <- clean_names(spatial_data)
+
+# Output spatial data ----
 
 # Check to make sure there is an Active ArcGIS Installation
 arc.check_product()
 
 # Output the ACS zip code data to the path specified
 arc.write(path = output_filepath_for_wide_shapefile, data = spatial_data, overwrite = TRUE, validate = TRUE)
-arc.write(path = output_filepath_for_long_shapefile, data = spatial_data_long, overwrite = TRUE, validate = TRUE)
+arc.write(path = output_filepath_for_aggregate_long_shapefile, data = spatial_data_long, overwrite = TRUE, validate = TRUE)
+arc.write(path = output_filepath_for_owner_long_shapefile, data = spatial_data_long_owner, overwrite = TRUE, validate = TRUE)
+arc.write(path = output_filepath_for_renter_long_shapefile, data = spatial_data_long_renter, overwrite = TRUE, validate = TRUE)
