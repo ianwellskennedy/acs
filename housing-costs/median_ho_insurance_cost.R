@@ -1,7 +1,7 @@
 # Packages ----
 
 # Set the packages to read in
-packages <- c("tidyverse", "tidycensus", "ggmap", "sf", "openxlsx", "arcgisbinding", "conflicted", "rmapshaper")
+packages <- c("tidyverse", "tidycensus", "ggmap", "sf", "openxlsx", "arcgisbinding", "conflicted", "rmapshaper", "spatstat")
 
 # Function to check and install missing packages
 install_if_missing <- function(package) {
@@ -44,16 +44,13 @@ show_api_call = TRUE # Show the call made to the Census API in the console, this
 state_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/States/cb_2024_us_state_20m.shp" # Input the file path for the shape file that you would like to read in. 
 metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_2024_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
 
-output_filepath_for_cleaned_data <- paste0("condo-analyses/outputs/median_homeowner_ins_cost_by_", geo_level, "_", acs_year,".xlsx")
-output_filepath_for_shapefile <- paste0("condo-analyses/outputs/median_homeowner_ins_cost_by_", geo_level, ".shp")
+output_filepath_for_cleaned_data <- paste0("housing-costs/outputs/median_homeowner_ins_cost_by_", geo_level, "_", acs_year,".xlsx")
+output_filepath_for_shapefile <- paste0("housing-costs/outputs/median_homeowner_ins_cost_by_", geo_level, "_", acs_year, ".shp")
 
 # Create a variable list to read in ----
 
 # Load the variables for the year / dataset selected above
 #acs_variables <- load_variables(year = acs_year, dataset = acs_data_type)
-
-## Optional code to output the ACS variables. There is already a version of the 2023 variables available here: R:/ADHOC-JBREC/Ian-K/API Template Scripts/ACS/Summary Tables/acs_variables_2023_acs1.xlsx
-# write.xlsx(acs_variables, paste0("R:/ADHOC-JBREC/Ian-K/API Template Scripts/ACS/Summary Tables/acs_variables_", acs_year, "_", acs_data_type, ".xlsx"))
 
 # Read in the preferred variable spreadsheet (create your own within this file: R:/ADHOC-JBREC/Ian-K/API Template Scripts/ACS/Summary Tables/acs_variables_2023_acs1.xlsx)
 variables <- read.xlsx("acs-variables/acs_variables_2024_acs1.xlsx", 
@@ -89,64 +86,73 @@ data <- data %>%
   # Rename the listed 'Variable' with the 'AmendedLabel' from the variable spreadsheet
   rename(variable = amended_label) %>%
   # Drop the 'Code' column
-  select(-code)
+  select(-c(code, moe))
 
-# Pivot the ACS data to a wide format, with columns named by variable. Each geography unit will have one row with one column per variable.
-data <- data %>%
-  pivot_wider(names_from = 'variable', values_from = 'estimate', id_cols = c('GEOID', 'NAME'))
+med_value <- data %>%
+  filter(variable == 'med_home_val') %>%
+  select(-c(NAME, variable)) %>%
+  rename(med_home_val = estimate)
 
 # Your code to clean/analyze ACS data ----
 
+data_summarized <- data %>%
+  mutate(ins_midpoint = case_when(
+    str_detect(variable, "under_100") ~ 50,
+    str_detect(variable, "100_to_299") ~ 200,
+    str_detect(variable, "300_to_499") ~ 400,
+    str_detect(variable, "500_to_799") ~ 650,
+    str_detect(variable, "800_to_999") ~ 900,
+    str_detect(variable, "1000_to_1499") ~ 1250,
+    str_detect(variable, "1500_to_1999") ~ 1750,
+    str_detect(variable, "2000_to_2499") ~ 2250,
+    str_detect(variable, "2500_to_2999") ~ 2750,
+    str_detect(variable, "3000_to_3499") ~ 3250,
+    str_detect(variable, "3500_to_3999") ~ 3750,
+    str_detect(variable, "over_4000") ~ 4500,
+    T ~ NA
+  )) %>%
+  rename(metro_name = NAME)
+
+data_summarized <- data_summarized %>% 
+  filter(!is.na(ins_midpoint)) %>%
+  group_by(metro_name, GEOID) %>%
+  summarize(med_ins = weighted.median(ins_midpoint, w = estimate),
+            avg_ins = weighted.mean(ins_midpoint, w = estimate)) %>%
+  ungroup() 
+
 if(geo_level == 'state') {
   
-  data_summarized <- data %>%
-    filter(!is.na(med_condo_fee)) %>%
-    mutate(med_condo_fee_ann = med_condo_fee*12) 
+  data_summarized <- data_summarized %>%
+    filter(!is.na(avg_ins)) 
   
 } else if(geo_level == 'cbsa'){
   
-  data_summarized <- data %>%
-    filter(!is.na(med_condo_fee) & !str_detect(NAME, pattern = "PR Metro Area")) %>%
-    mutate(NAME = str_remove(NAME, " Metro Area"),
-           NAME = str_remove(NAME, " Micro Area")) %>%
-    mutate(med_condo_fee_ann = med_condo_fee*12)
+  data_summarized <- data_summarized %>%
+    filter(!is.na(avg_ins) & !str_detect(metro_name, pattern = "PR Metro Area")) %>%
+    mutate(metro_name = str_remove(metro_name, " Metro Area"),
+           metro_name = str_remove(metro_name, " Micro Area")) 
   
 } else if(geo_level == 'county'){
   
-  data_summarized <- data %>%
-    filter(!is.na(med_condo_fee) & !str_detect(NAME, pattern = "Puerto Rico")) %>%
-    mutate(NAME = str_remove(NAME, " County.*")) %>%
-    mutate(med_condo_fee_ann = med_condo_fee*12)
-  
+  data_summarized <- data_summarized %>%
+    filter(!is.na(avg_ins) & !str_detect(NAME, pattern = "Puerto Rico")) %>%
+    mutate(NAME = str_remove(NAME, " County.*")) 
 } else{
   
   print("Check geo_level value!")
   
 }
 
-data_summarized <- data_summarized %>%
-  filter(NAME != 'Massena-Ogdensburg, NY')
 
-# Read in zillow data ----
-
-zillow_data <- read.xlsx(zillow_condo_values_file_path, sheet = 'cleaned')
-zillow_data <- zillow_data %>%
-  select(RegionName, RegionID, average_2024)
-
-zillow_metro_crosswalk <- read.xlsx(zillow_metro_crosswalk_file_path)
-
-zillow_data <- zillow_data %>%
-  left_join(zillow_metro_crosswalk, by = c('RegionID' = 'zillow_metro_code')) %>%
-  select(GEOID, average_2024) %>%
-  filter(!is.na(GEOID))
-
-# Join zillow data ----
+# Join home value data ----
 
 data_summarized <- data_summarized %>%
-  left_join(zillow_data, by = 'GEOID')
+  left_join(med_value, by = 'GEOID') 
 
 data_summarized <- data_summarized %>%
-  mutate(shr_of_val = (med_condo_fee_ann/average_2024)*100)
+  mutate(shr_of_val = (med_ins/med_home_val)*100) 
+
+
 # Output tabular data ----
 
 write.xlsx(data_summarized, output_filepath_for_cleaned_data)
@@ -177,7 +183,7 @@ if(geo_level == 'state') {
   
   # Join the shapefile geometry to the summarized data by GEOID:
   spatial_data <- data_summarized %>%
-    left_join(metro_shapefile, by = 'GEOID') %>%
+    left_join(metro_shapefile, by = c('GEOID')) %>%
     st_as_sf()
   
 } else{
@@ -188,9 +194,9 @@ if(geo_level == 'state') {
 
 # Plot the data:
 spatial_data %>%
-  filter(!NAME %in% c('Alaska', 'Hawaii')) %>%
+  filter(!metro_name %in% c('Alaska', 'Hawaii')) %>%
   filter(
-    !str_detect(NAME, pattern = ', AK') & !str_detect(NAME, pattern = ', HI')
+    !str_detect(metro_name, pattern = ', AK') & !str_detect(metro_name, pattern = ', HI')
   ) %>%
   ggplot(aes(fill = shr_of_val)) +
   geom_sf(color = NA) +
