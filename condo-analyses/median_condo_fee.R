@@ -29,14 +29,14 @@ rm(install_if_missing, packages)
 
 # Setting file paths / environment variables ----
 
-state_or_metro <- 'cbsa' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
+geo_level <- 'cbsa' # Define the geography for the ACS data download. Other options include 'state', 'cbsa' (for metro), 'county', 'tract', 'block group', etc.
 # See https://walker-data.com/tidycensus/articles/basic-usage.html#geography-in-tidycensus for a comprehensive list of geography options.
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
 
 acs_year <- 2024
 acs_data_type <- 'acs1' # Define the survey to pull data from, 'acs5' for 5-year estimates, 'acs1' for 1 year estimates
-geo_level_for_data_pull <- state_or_metro 
+geo_level_for_data_pull <- geo_level 
 read_in_geometry <- FALSE # Change this to TRUE to pull in spatial data along with the data download 
 # Geometry will take A LOT longer to read in.The more granular the geography, the longer the read-in time if TRUE.
 show_api_call = TRUE # Show the call made to the Census API in the console, this will help if an error is thrown
@@ -44,8 +44,10 @@ show_api_call = TRUE # Show the call made to the Census API in the console, this
 state_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/States/cb_2024_us_state_20m.shp" # Input the file path for the shape file that you would like to read in. 
 metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_2024_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
 
-output_filepath_for_cleaned_data <- paste0("condo-analyses/outputs/median_condo_fee_by_", state_or_metro, "_2024.xlsx")
-output_filepath_for_shapefile <- paste0("condo-analyses/outputs/median_condo_fee_by_", state_or_metro, ".shp")
+zillow_condo_values_file_path <- "condo-analyses/inputs/Metro_zhvi_uc_condo_tier_0.33_0.67_sm_sa_month.xlsx"
+zillow_metro_crosswalk_file_path <- "condo-analyses/inputs/zillow_metro_crosswalk.xlsx"
+output_filepath_for_cleaned_data <- paste0("condo-analyses/outputs/median_condo_fee_by_", geo_level, "_2024.xlsx")
+output_filepath_for_shapefile <- paste0("condo-analyses/outputs/median_condo_fee_by_", geo_level, ".shp")
 
 # Create a variable list to read in ----
 
@@ -72,7 +74,7 @@ variable_labels <- variables$amended_label
 # Read in the ACS data ----
 
 data <- get_acs(
-  geography = geo_level_for_data_pull,
+  geography = geo_level,
   variables = variable_codes,
   year = acs_year,
   geometry = read_in_geometry,
@@ -97,13 +99,13 @@ data <- data %>%
 
 # Your code to clean/analyze ACS data ----
 
-if(state_or_metro == 'state') {
+if(geo_level == 'state') {
   
   data_summarized <- data %>%
     filter(!is.na(med_condo_fee)) %>%
     mutate(med_condo_fee_ann = med_condo_fee*12) 
   
-} else if(state_or_metro == 'cbsa'){
+} else if(geo_level == 'cbsa'){
   
   data_summarized <- data %>%
     filter(!is.na(med_condo_fee) & !str_detect(NAME, pattern = "PR Metro Area")) %>%
@@ -111,16 +113,43 @@ if(state_or_metro == 'state') {
            NAME = str_remove(NAME, " Micro Area")) %>%
     mutate(med_condo_fee_ann = med_condo_fee*12)
   
+} else if(geo_level == 'county'){
+  
+  data_summarized <- data %>%
+    filter(!is.na(med_condo_fee) & !str_detect(NAME, pattern = "Puerto Rico")) %>%
+    mutate(NAME = str_remove(NAME, " County.*")) %>%
+    mutate(med_condo_fee_ann = med_condo_fee*12)
+  
 } else{
   
-  print("Check state_or_metro value!")
+  print("Check geo_level value!")
   
 }
 
-# Output tabular data ----
-
 data_summarized <- data_summarized %>%
   filter(NAME != 'Massena-Ogdensburg, NY')
+
+# Read in zillow data ----
+
+zillow_data <- read.xlsx(zillow_condo_values_file_path, sheet = 'cleaned')
+zillow_data <- zillow_data %>%
+  select(RegionName, RegionID, average_2024)
+
+zillow_metro_crosswalk <- read.xlsx(zillow_metro_crosswalk_file_path)
+
+zillow_data <- zillow_data %>%
+  left_join(zillow_metro_crosswalk, by = c('RegionID' = 'zillow_metro_code')) %>%
+  select(GEOID, average_2024) %>%
+  filter(!is.na(GEOID))
+
+# Join zillow data ----
+
+data_summarized <- data_summarized %>%
+  left_join(zillow_data, by = 'GEOID')
+
+data_summarized <- data_summarized %>%
+  mutate(shr_of_val = (med_condo_fee_ann/average_2024)*100)
+# Output tabular data ----
 
 write.xlsx(data_summarized, output_filepath_for_cleaned_data)
 
@@ -139,14 +168,14 @@ metro_shapefile <- metro_shapefile %>%
 
 # Create a spatial file and plot it! ----
 
-if(state_or_metro == 'state') {
+if(geo_level == 'state') {
   
   # Join the shapefile geometry to the summarized data by GEOID:
   spatial_data <- data_summarized %>%
     left_join(state_shapefile, by = 'GEOID') %>%
     st_as_sf()
   
-} else if(state_or_metro == 'cbsa'){
+} else if(geo_level == 'cbsa'){
   
   # Join the shapefile geometry to the summarized data by GEOID:
   spatial_data <- data_summarized %>%
@@ -155,7 +184,7 @@ if(state_or_metro == 'state') {
   
 } else{
   
-  print("Check state_or_metro value!")
+  print("Check geo_level value!")
   
 }
 
@@ -165,7 +194,7 @@ spatial_data %>%
   filter(
     !str_detect(NAME, pattern = ', AK') & !str_detect(NAME, pattern = ', HI')
   ) %>%
-  ggplot(aes(fill = med_condo_fee_ann)) +
+  ggplot(aes(fill = shr_of_val)) +
   geom_sf(color = NA) +
   scale_fill_viridis_c(option = 'D') +
   theme_minimal() +
