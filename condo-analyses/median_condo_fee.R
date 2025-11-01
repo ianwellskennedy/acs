@@ -34,7 +34,7 @@ geo_level <- 'cbsa' # Define the geography for the ACS data download. Other opti
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
 
-acs_year <- 2024
+acs_year <- 2023
 acs_data_type <- 'acs1' # Define the survey to pull data from, 'acs5' for 5-year estimates, 'acs1' for 1 year estimates
 geo_level_for_data_pull <- geo_level 
 read_in_geometry <- FALSE # Change this to TRUE to pull in spatial data along with the data download 
@@ -46,8 +46,8 @@ metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_
 
 zillow_condo_values_file_path <- "condo-analyses/inputs/Metro_zhvi_uc_condo_tier_0.33_0.67_sm_sa_month.xlsx"
 zillow_metro_crosswalk_file_path <- "condo-analyses/inputs/zillow_metro_crosswalk.xlsx"
-output_filepath_for_cleaned_data <- paste0("condo-analyses/outputs/median_condo_fee_by_", geo_level, "_2024.xlsx")
-output_filepath_for_shapefile <- paste0("condo-analyses/outputs/median_condo_fee_by_", geo_level, ".shp")
+output_filepath_for_cleaned_data <- paste0("condo-analyses/outputs/median_condo_fee_by_", geo_level, "_", acs_year, ".xlsx")
+output_filepath_for_shapefile <- paste0("condo-analyses/outputs/median_condo_fee_by_", geo_level, "_", acs_year, ".shp")
 
 # Create a variable list to read in ----
 

@@ -88,37 +88,35 @@ data <- data %>%
   # Drop the 'Code' column
   select(-c(code, moe))
 
-med_value <- data %>%
-  filter(variable == 'med_home_val') %>%
-  select(-c(NAME, variable)) %>%
-  rename(med_home_val = estimate)
+# Pivot the ACS data to a wide format, with columns named by variable. Each geography unit will have one row with one column per variable.
+data <- data %>%
+  pivot_wider(names_from = 'variable', values_from = 'estimate', id_cols = c('GEOID', 'NAME'))
+
 
 # Your code to clean/analyze ACS data ----
 
-data_summarized <- data %>%
-  mutate(ins_midpoint = case_when(
-    str_detect(variable, "under_100") ~ 50,
-    str_detect(variable, "100_to_299") ~ 200,
-    str_detect(variable, "300_to_499") ~ 400,
-    str_detect(variable, "500_to_799") ~ 650,
-    str_detect(variable, "800_to_999") ~ 900,
-    str_detect(variable, "1000_to_1499") ~ 1250,
-    str_detect(variable, "1500_to_1999") ~ 1750,
-    str_detect(variable, "2000_to_2499") ~ 2250,
-    str_detect(variable, "2500_to_2999") ~ 2750,
-    str_detect(variable, "3000_to_3499") ~ 3250,
-    str_detect(variable, "3500_to_3999") ~ 3750,
-    str_detect(variable, "over_4000") ~ 4500,
-    T ~ NA
-  )) %>%
-  rename(metro_name = NAME)
+data_summarized <- data %>% 
+  mutate(ho_under_100 = ho_mort_under_100 + ho_no_mort_under_100,
+         f_100_299 = ho_mort_100_to_299 + ho_no_mort_100_to_299,
+         f_300_499 = ho_mort_300_to_499 + ho_no_mort_300_to_499,
+         f_500_799 = ho_mort_500_to_799 + ho_no_mort_500_to_799,
+         f_800_999 = ho_mort_800_to_999 + ho_no_mort_800_to_999,
+         f_1000_1499 = ho_mort_1000_to_1499 + ho_no_mort_1000_to_1499,
+         f_1500_1999 = ho_mort_1500_to_1999 + ho_no_mort_1500_to_1999,
+         f_2000_to_2499 = ho_mort_2000_to_2499 + ho_no_mort_2000_to_2499,
+         f_3000_3499 = ho_mort_3000_to_3499 + ho_no_mort_3000_to_3499,
+         f_3500_3999 = ho_mort_3500_to_3999 + ho_no_mort_3500_to_3999,
+         f_over_4000 = ho_mort_over_4000 + ho_no_mort_over_4000) %>%
+  select(GEOID, NAME, ho_tot, starts_with('f_'))
 
 data_summarized <- data_summarized %>% 
-  filter(!is.na(ins_midpoint)) %>%
-  group_by(metro_name, GEOID) %>%
-  summarize(med_ins = weighted.median(ins_midpoint, w = estimate),
-            avg_ins = weighted.mean(ins_midpoint, w = estimate)) %>%
-  ungroup() 
+  mutate(
+    across(
+      starts_with('f_'),
+      ~ . / ho_tot,
+      .names = "shr_{.col}"
+    )
+  )
 
 if(geo_level == 'state') {
   
@@ -128,9 +126,9 @@ if(geo_level == 'state') {
 } else if(geo_level == 'cbsa'){
   
   data_summarized <- data_summarized %>%
-    filter(!is.na(avg_ins) & !str_detect(metro_name, pattern = "PR Metro Area")) %>%
-    mutate(metro_name = str_remove(metro_name, " Metro Area"),
-           metro_name = str_remove(metro_name, " Micro Area")) 
+    filter(!str_detect(NAME, pattern = "PR Metro Area")) %>%
+    mutate(NAME = str_remove(NAME, " Metro Area"),
+           NAME = str_remove(NAME, " Micro Area")) 
   
 } else if(geo_level == 'county'){
   
