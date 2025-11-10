@@ -34,23 +34,23 @@ geo_level <- 'cbsa' # Define the geography for the ACS data download. Other opti
 
 census_api_key <- 'f8d6fbb724ef6f8e8004220898ac5ed24324b814' # Provide the Census API Key, if others are running this you will need to get a Census API key here: https://api.census.gov/data/key_signup.html
 
-acs_year <- 2024
+acs_year <- 2023
 acs_data_type <- 'acs1' # Define the survey to pull data from, 'acs5' for 5-year estimates, 'acs1' for 1 year estimates
 geo_level_for_data_pull <- geo_level 
 read_in_geometry <- FALSE # Change this to TRUE to pull in spatial data along with the data download 
 # Geometry will take A LOT longer to read in.The more granular the geography, the longer the read-in time if TRUE.
 show_api_call = TRUE # Show the call made to the Census API in the console, this will help if an error is thrown
 
-state_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/States/cb_2024_us_state_20m.shp" # Input the file path for the shape file that you would like to read in. 
-metro_shapefile_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_2024_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
+state_shp_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/States/cb_2024_us_state_20m.shp" # Input the file path for the shape file that you would like to read in. 
+metro_shp_file_path <- "C:/Users/ianwe/Downloads/shapefiles/2024/CBSAs/cb_2024_us_cbsa_500k.shp" # Input the file path for the shape file that you would like to read in. 
 
 output_filepath_for_cleaned_data <- paste0("housing-costs/outputs/median_homeowner_ins_cost_by_", geo_level, "_", acs_year,".xlsx")
-output_filepath_for_shapefile <- paste0("housing-costs/outputs/median_homeowner_ins_cost_by_", geo_level, "_", acs_year, ".shp")
+output_filepath_for_shp <- paste0("housing-costs/outputs/median_homeowner_ins_cost_by_", geo_level, "_", acs_year, ".shp")
 
 # Create a variable list to read in ----
 
 # Load the variables for the year / dataset selected above
-#acs_variables <- load_variables(year = acs_year, dataset = acs_data_type)
+acs_variables <- load_variables(year = acs_year, dataset = acs_data_type)
 
 # Read in the preferred variable spreadsheet (create your own within this file: R:/ADHOC-JBREC/Ian-K/API Template Scripts/ACS/Summary Tables/acs_variables_2023_acs1.xlsx)
 variables <- read.xlsx("acs-variables/acs_variables_2024_acs1.xlsx", 
@@ -106,8 +106,12 @@ data_summarized <- data %>%
          f_2000_to_2499 = ho_mort_2000_to_2499 + ho_no_mort_2000_to_2499,
          f_3000_3499 = ho_mort_3000_to_3499 + ho_no_mort_3000_to_3499,
          f_3500_3999 = ho_mort_3500_to_3999 + ho_no_mort_3500_to_3999,
-         f_over_4000 = ho_mort_over_4000 + ho_no_mort_over_4000) %>%
+         f_over_4000 = ho_mort_over_4000 + ho_no_mort_over_4000,
+         f_over_3000 = ho_mort_3000_to_3499 + ho_no_mort_3000_to_3499 + ho_mort_3500_to_3999 + 
+                       ho_no_mort_3500_to_3999 + ho_mort_over_4000 + ho_no_mort_over_4000
+         ) %>%
   select(GEOID, NAME, ho_tot, starts_with('f_'))
+
 
 data_summarized <- data_summarized %>% 
   mutate(
@@ -117,6 +121,8 @@ data_summarized <- data_summarized %>%
       .names = "shr_{.col}"
     )
   )
+
+
 
 if(geo_level == 'state') {
   
@@ -141,16 +147,6 @@ if(geo_level == 'state') {
   
 }
 
-
-# Join home value data ----
-
-data_summarized <- data_summarized %>%
-  left_join(med_value, by = 'GEOID') 
-
-data_summarized <- data_summarized %>%
-  mutate(shr_of_val = (med_ins/med_home_val)*100) 
-
-
 # Output tabular data ----
 
 write.xlsx(data_summarized, output_filepath_for_cleaned_data)
@@ -159,29 +155,29 @@ write.xlsx(data_summarized, output_filepath_for_cleaned_data)
 
 # Note, these files will contain geographies from US Territories (i.e. Puerto Rico, Guam, etc.). Remove them if need be!
 
-state_shapefile <- st_read(state_shapefile_file_path)
-metro_shapefile <- st_read(metro_shapefile_file_path)
+state_shp <- st_read(state_shp_file_path)
+metro_shp <- st_read(metro_shp_file_path)
 
-state_shapefile <- state_shapefile %>%
+state_shp <- state_shp %>%
   select(GEOID, geometry)
 
-metro_shapefile <- metro_shapefile %>%
+metro_shp <- metro_shp %>%
   select(GEOID, geometry)
 
 # Create a spatial file and plot it! ----
 
 if(geo_level == 'state') {
   
-  # Join the shapefile geometry to the summarized data by GEOID:
+  # Join the shp geometry to the summarized data by GEOID:
   spatial_data <- data_summarized %>%
-    left_join(state_shapefile, by = 'GEOID') %>%
+    left_join(state_shp, by = 'GEOID') %>%
     st_as_sf()
   
 } else if(geo_level == 'cbsa'){
   
-  # Join the shapefile geometry to the summarized data by GEOID:
+  # Join the shp geometry to the summarized data by GEOID:
   spatial_data <- data_summarized %>%
-    left_join(metro_shapefile, by = c('GEOID')) %>%
+    left_join(metro_shp, by = c('GEOID')) %>%
     st_as_sf()
   
 } else{
@@ -192,11 +188,11 @@ if(geo_level == 'state') {
 
 # Plot the data:
 spatial_data %>%
-  filter(!metro_name %in% c('Alaska', 'Hawaii')) %>%
+  filter(!NAME %in% c('Alaska', 'Hawaii')) %>%
   filter(
-    !str_detect(metro_name, pattern = ', AK') & !str_detect(metro_name, pattern = ', HI')
+    !str_detect(NAME, pattern = ', AK') & !str_detect(NAME, pattern = ', HI')
   ) %>%
-  ggplot(aes(fill = shr_of_val)) +
+  ggplot(aes(fill = shr_f_over_4000)) +
   geom_sf(color = NA) +
   scale_fill_viridis_c(option = 'D') +
   theme_minimal() +
@@ -210,4 +206,4 @@ spatial_data %>%
 arc.check_product()
 
 # Output the ACS zip code data to the path specified
-arc.write(path = output_filepath_for_shapefile, data = spatial_data, overwrite = TRUE, validate = TRUE)
+arc.write(path = output_filepath_for_shp, data = spatial_data, overwrite = TRUE, validate = TRUE)
